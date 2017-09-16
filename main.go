@@ -1,3 +1,6 @@
+// The command "mark" stages files (usually in a file called
+// ~/.mark-staging) and executes commands on them as a batch.
+
 package main
 
 import (
@@ -14,13 +17,26 @@ import (
 )
 
 var (
-	flagCreateStaging   = true
+	// -create, create staging area if it doesn't exist
+	flagCreateStaging = true
+
+	// -preserve, don't remove files under directory if directory added
 	flagPreserveSubdirs = false
-	flagRetainMark      = false
-	flagPrintCommand    = false
-	flagDryRun          = false
-	flagTagMatch        = ""
-	flagStagingPath     = "~/.mark-staging"
+
+	// -retain, don't clear the staging area after "exec"
+	flagRetainMark = false
+
+	// -v, print commands before executing
+	flagPrintCommand = false
+
+	// -dry, print but don't execute commands
+	flagDryRun = false
+
+	// -tag foo, apply commands only to files tagged "foo"
+	flagTagMatch = ""
+
+	// -staging ~/.other-staging, use different staging area
+	flagStagingPath = "~/.mark-staging"
 )
 
 func eprintf(format string, args ...interface{}) {
@@ -42,11 +58,6 @@ func hardfail(err error) {
 	}
 }
 
-const (
-	DIR = iota
-	FILE
-)
-
 type Mark struct {
 	Path string
 	Tags []string
@@ -64,6 +75,7 @@ func (s *StagingArea) Output(out []byte) {
 	os.Stdout.Write(out)
 }
 
+// the crap we write at the top of every staging file
 func prefix(out io.Writer) {
 	cmd := strings.Trim(
 		filepath.Base(os.Args[0])+
@@ -79,6 +91,7 @@ func prefix(out io.Writer) {
 
 }
 
+// create an empty staging file
 func createStaging(path string) (*StagingArea, error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
@@ -92,6 +105,8 @@ func createStaging(path string) (*StagingArea, error) {
 	return &StagingArea{path: path}, nil
 }
 
+// GetStagingArea reads and parses the staging file, or create and returns
+// a new one if none exists
 func GetStagingArea(path string) (*StagingArea, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -127,6 +142,9 @@ func GetStagingArea(path string) (*StagingArea, error) {
 	return ret, nil
 }
 
+// Remove removes all files from the staging area whose
+// basename matches the glob pattern
+// BUG(tqbf): this sucks, do something better than basename
 func (s *StagingArea) Remove(glob string) int {
 	newMarks := []Mark{}
 	killed := 0
@@ -145,6 +163,11 @@ func (s *StagingArea) Remove(glob string) int {
 	return killed
 }
 
+// Add adds a path to the staging area. If -preserve isn't
+// set, adding a directory that is a parent to other files
+// already in the staging area replaces those files with the
+// directory itself.
+// BUG(tqbf): make directory walks work
 func (s *StagingArea) Add(path string) bool {
 	path, err := filepath.Abs(path)
 	if !ok(err) {
@@ -194,6 +217,8 @@ func (s *StagingArea) Add(path string) bool {
 	return true
 }
 
+// Exec executes a command for a mark (unless -dry is set, in which
+// case just print the command)
 func (m *Mark) Exec(args []string) (err error) {
 	nargs := []string{}
 
@@ -233,6 +258,7 @@ func (m *Mark) Exec(args []string) (err error) {
 	return nil
 }
 
+// Rewrite dumps the current parsed staging area back to disk
 func (s *StagingArea) Rewrite() {
 	f, err := ioutil.TempFile("", "mark")
 	hardfail(err)
@@ -255,6 +281,9 @@ func (s *StagingArea) Rewrite() {
 	hardfail(os.Rename(fn, s.path))
 }
 
+// Exec executes the command "args" across all files in the
+// staging area; if tag is nonempty, only files matching tag
+// are acted on
 func (s *StagingArea) Exec(args []string, tag string) (completed int, rerr error) {
 	for _, m := range s.Marks {
 		if tag != "" {
@@ -282,6 +311,11 @@ func (s *StagingArea) Exec(args []string, tag string) (completed int, rerr error
 	return completed, rerr
 }
 
+// Tag adds a tag to all files in the staging area whose
+// basenmae matches pat. If "pat" is empty, all files are
+// tagged, which might make sense if you're going to build
+// up staging area incrementally.
+// BUG(tqbf): again with this stupid basename stuff
 func (m *Mark) Tag(pat, tag string) bool {
 	hit, _ := filepath.Match(pat, path.Base(m.Path))
 	if pat == "" || hit {
@@ -302,6 +336,7 @@ func status(stage *StagingArea) {
 	fmt.Printf(`Available commands:
   add <files>
   exec <files>
+  tag <tag> (files)
 
   -help
 ------------------------------
@@ -315,12 +350,12 @@ func status(stage *StagingArea) {
 }
 
 func main() {
-	flag.BoolVar(&flagCreateStaging, "create", true, "allow mark to create staging area")
-	flag.BoolVar(&flagPreserveSubdirs, "preserve", false, "preserve subdirectories underneath newly added directory")
-	flag.BoolVar(&flagRetainMark, "retain", false, "retain mark after execution")
-	flag.BoolVar(&flagPrintCommand, "v", false, "print commands before running")
-	flag.BoolVar(&flagDryRun, "dry", false, "print commands before running and don't run")
-	flag.StringVar(&flagTagMatch, "tag", "", "match based on specified tag, not paths")
+	flag.BoolVar(&flagCreateStaging, "create", flagCreateStaging, "allow mark to create staging area")
+	flag.BoolVar(&flagPreserveSubdirs, "preserve", flagPreserveSubdirs, "preserve subdirectories underneath newly added directory")
+	flag.BoolVar(&flagRetainMark, "retain", flagRetainMark, "retain mark after execution")
+	flag.BoolVar(&flagPrintCommand, "v", flagPrintCommand, "print commands before running")
+	flag.BoolVar(&flagDryRun, "dry", flagDryRun, "print commands before running and don't run")
+	flag.StringVar(&flagTagMatch, "tag", flagTagMatch, "match based on specified tag, not paths")
 	flag.StringVar(&flagStagingPath, "staging", flagStagingPath, fmt.Sprintf("staging file (default: %s)", flagStagingPath))
 
 	flag.Parse()
