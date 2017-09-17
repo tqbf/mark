@@ -37,6 +37,14 @@ var (
 
 	// -staging ~/.other-staging, use different staging area
 	flagStagingPath = "~/.mark-staging"
+
+	availableCommands = `Available commands:
+  add <files>
+  exec (like, exec cp _ .)
+  tag <tag> (files)
+  remove (files)
+  -help
+`
 )
 
 func eprintf(format string, args ...interface{}) {
@@ -333,15 +341,7 @@ func (m *Mark) Tag(pat, tag string) bool {
 }
 
 func status(stage *StagingArea) {
-	fmt.Printf(`Available commands:
-  add <files>
-  exec <files>
-  tag <tag> (files)
-
-  -help
-------------------------------
-
-`)
+	eprintf(availableCommands)
 
 	for i, m := range stage.Marks {
 		fmt.Printf("%d. %s %v\n", i, m.Path, m.Tags)
@@ -450,9 +450,7 @@ func main() {
 		return
 
 	default:
-		eprintf(`Available commands:
-  add <files>
-  exec <files>`)
+		eprintf(availableCommands)
 		return
 	}
 }
