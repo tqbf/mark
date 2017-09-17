@@ -79,7 +79,7 @@ type StagingArea struct {
 }
 
 func (s *StagingArea) Output(out []byte) {
-	// fow now, but something smarter when parallel
+	// for now, but something smarter when parallel
 	os.Stdout.Write(out)
 }
 
@@ -113,7 +113,7 @@ func createStaging(path string) (*StagingArea, error) {
 	return &StagingArea{path: path}, nil
 }
 
-// GetStagingArea reads and parses the staging file, or create and returns
+// GetStagingArea reads and parses the staging file, or creates and returns
 // a new one if none exists
 func GetStagingArea(path string) (*StagingArea, error) {
 	f, err := os.Open(path)
